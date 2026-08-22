@@ -3,6 +3,23 @@
 A beginner-level simulation project exploring **quantum error correction (QEC)** using the **repetition code**, built with [Stim](https://github.com/quantumlib/Stim), [PyMatching](https://github.com/oscarhiggott/PyMatching), and [Sinter](https://github.com/quantumlib/Stim/tree/main/glue/sample). The project simulates noisy quantum circuits, decodes errors using a minimum-weight perfect matching (MWPM) decoder, and estimates the error-correction **threshold** of the repetition code under a phenomenological noise model.
 
 ---
+## Table of Contents
+
+1. [Project Overview](#project-overview)
+2. [Background Concepts](#background-concepts)
+3. [What Is Quantum Error Correction?](#what-is-quantum-error-correction)
+4. [What Is a Repetition Code?](#what-is-a-repetition-code)
+5. [Tools and Libraries Used](#tools-and-libraries-used)
+6. [How the Project Works](#how-the-project-works)
+7. [Results](#results)
+8. [Limitations](#limitations)
+9. [Future Work](#future-work)
+10. [Project Structure](#project-structure)
+11. [How to Run This Project](#how-to-run-this-project)
+12. [What I Learned](#what-i-learned)
+13. [References](#references)
+
+---
 
 ## 📌 Overview
 
@@ -10,9 +27,20 @@ Quantum computers are extremely sensitive to noise — physical qubits lose info
 
 This project implements one of the simplest QEC codes — the **repetition code** — and studies how well it protects information as the amount of physical noise and the size (distance) of the code change.
 
-According to Google Quantum AI's research on superconducting quantum processors, error correction only works when the physical error rate is kept **below a critical threshold**; below that threshold, adding more physical qubits exponentially suppresses the logical error rate, while above it, larger codes actually perform worse. This project reproduces that same qualitative behavior in simulation.
+The quantum error correction only works when the physical error rate is kept **below a critical threshold**; below that threshold, adding more physical qubits exponentially suppresses the logical error rate, while above it, larger codes actually perform worse. This project reproduces that same qualitative behavior in simulation.
+
+> "If I copy the same piece of quantum information across many qubits, how much noise can I tolerate before the information is lost?"
+
+The project:
+- Builds a repetition code circuit with a chosen "distance" (a measure of how many qubits are used for protection).
+- Adds random noise to the circuit using a **phenomenological noise model** — a simplified, idealized way of injecting noise that is easy to simulate and is commonly used as a first step before testing more detailed, gate-by-gate noise models.
+- Uses a decoder to guess and undo the noise.
+- Measures how often the decoder guesses wrong (this is called the **logical error rate**).
+- Repeats this process for different code sizes and noise levels to find the **threshold**: the noise level below which adding more qubits actually helps, and above which it doesn't.
 
 ---
+
+
 
 ## 🧠 Background Concepts
 
@@ -29,173 +57,24 @@ According to Google Quantum AI's research on superconducting quantum processors,
 
 ---
 
-## 🛠️ QEC Tools & Libraries Used
-
-### Stim — Circuit Simulation
-[Stim](https://github.com/quantumlib/Stim) is a high-performance **stabilizer circuit simulator** originally developed by Craig Gidney at Google (Gidney, *"Stim: a fast stabilizer circuit simulator,"* Quantum 5, 497, 2021). Unlike a general-purpose quantum simulator, Stim is specialized for the kind of Clifford/stabilizer circuits used in QEC, which lets it simulate circuits with thousands of qubits and millions of gates in seconds. In this project, Stim is used to:
-- Generate the repetition code circuit (`stim.Circuit.generated(...)`) for a chosen code distance, number of rounds, and noise model.
-- Sample raw measurement outcomes and **detector** outcomes (parity-check results that flag *when* an error occurred).
-- Produce circuit and matching-graph diagrams for visualization.
-- Build the Detector Error Model used by the decoder.
-
-### Detector Error Model (DEM)
-The **Detector Error Model** is Stim's compact, graph-like description of a noisy circuit: it lists every possible physical error and which detector(s) it would trigger if it occurred (`circuit.detector_error_model()`). Instead of reasoning about the full quantum circuit, a decoder only needs this much smaller error graph — each **node** is a detector, and each **edge** is a possible error connecting two detectors (or a detector to the boundary). This is what makes fast, practical decoding possible.
-
-### PyMatching — Decoding
-[PyMatching](https://github.com/oscarhiggott/PyMatching) is a fast **Minimum-Weight Perfect Matching (MWPM)** decoder built by Oscar Higgott and Craig Gidney, developed with support from the Google Quantum AI team. Given a DEM and a set of detector events from a run, PyMatching finds the most likely underlying pattern of physical errors by matching pairs of fired detectors together (Higgott & Gidney, *"Sparse Blossom: correcting a million errors per core second with minimum-weight matching,"* Quantum 9, 1600, 2025). In this project, `pymatching.Matching.from_detector_error_model(...)` builds the decoder, and `matcher.decode_batch(...)` predicts whether the logical qubit flipped for each of the 100,000 simulated shots.
-
-### Sinter — Large-Scale Threshold Estimation
-[Sinter](https://github.com/quantumlib/Stim/tree/main/glue/sample) is Stim's companion tool for automating **large-scale QEC experiments**. Where Stim simulates one circuit at a time, Sinter runs many circuits — across multiple code distances and physical error rates — in parallel, collects logical error statistics, and estimates confidence intervals for each data point. It is used here to generate the final threshold plot across d = 3, 5, 7, 9 and seven different physical error rates, using PyMatching as the decoder.
-
-### Supporting Libraries
-- **NumPy** — numerical operations (e.g., comparing predicted vs. actual logical flips).
-- **Matplotlib** — plotting the logical vs. physical error rate curves.
-
----
-
-## 📂 Project Structure
-
-```
-repetition-code-qec/
-├── Repetition_Code.ipynb        # Main notebook: circuit generation, sampling, decoding, threshold plot
-├── images/
-│   ├── circuit_diagram.svg      # Repetition code circuit timeline diagram
-│   ├── dem_matchgraph.svg       # Detector Error Model matching-graph diagram
-│   ├── preliminary_plot.png     # Early logical-vs-physical error rate plot (d = 3, 5, 7)
-│   └── threshold_plot.png       # Final Sinter-generated threshold plot (d = 3, 5, 7, 9)
-└── README.md
-```
-
-> Just drop your exported images into `images/` using these exact filenames when you upload the project, and every image reference below will render automatically — no edits needed.
-
----
-
-## ⚙️ Installation
-
-This project runs in a standard Python (3.9+) environment or Google Colab.
-
-```bash
-pip install stim==1.14
-pip install pymatching
-pip install "sinter~=1.14"
-pip install numpy matplotlib
-```
-
----
-
-## 🚀 What the Notebook Does (Step by Step)
-
-1. **Installs and verifies** Stim, PyMatching, and Sinter versions.
-2. **Generates a repetition code circuit** (`distance=9`, `rounds=25`) with configurable physical noise (`before_round_data_depolarization`) and measurement noise (`before_measure_flip_probability`).
-3. **Visualizes the circuit** as a timeline diagram (SVG).
-4. **Samples raw measurements** and **detector outcomes**, showing how single physical errors appear as persistent `1`s in raw measurements but as isolated, paired `!` events once converted to detectors.
-5. **Builds a Detector Error Model (DEM)** from the circuit and visualizes it as a matching graph.
-6. **Decodes samples with PyMatching**, using a `count_logical_errors()` function that compares the decoder's predictions against the actual logical-qubit flips over 100,000 shots.
-7. **Compares logical error rates** at two noise levels (4% and 13%) to show how logical error rate grows with physical noise.
-8. **Sweeps code distance (d = 3, 5, 7) against physical noise (0.1–0.5)** with Matplotlib to get an early look at threshold-like behavior.
-9. **Uses Sinter to run a large-scale, statistically robust experiment** across d = 3, 5, 7, 9 and multiple physical error rates, then plots the final **logical error rate vs. physical error rate** graph with automatically calculated uncertainty bands.
-
----
-
-## 📊 Visualizations & Results
-
-### 1. Repetition Code Circuit
-![Repetition code circuit timeline](images/circuit_diagram.svg)
-
-A timeline view of the distance-9 repetition code circuit (17 qubits, 25 rounds), generated directly by Stim. Each horizontal line is a qubit; the gates and resets shown are what make up one full memory experiment.
-
-### 2. Detector Error Model (Matching Graph)
-![Detector error model matching graph](images/dem_matchgraph.svg)
-
-The DEM shown as a weighted graph: each node is a detector, and each edge is a possible physical error connecting two detectors (or a detector to the code boundary). This is the structure PyMatching decodes over.
-
-### 3. Preliminary Error-Rate Sweep (Matplotlib)
-![Preliminary logical vs physical error rate plot](images/preliminary_plot.png)
-
-An early sweep of logical error rate vs. physical error rate for d = 3, 5, 7, run directly with Matplotlib before moving to Sinter for a larger, statistically robust experiment.
-
-### 4. Final Threshold Plot (Sinter)
-![Repetition code threshold plot](images/threshold_plot.png)
-
-The final result: logical error rate vs. physical error rate for d = 3, 5, 7, 9, generated with Sinter across ~100,000 shots per data point, with shaded confidence bands.
-
-**Key takeaway:** At low physical error rates, larger code distances (d = 9, red) suppress the logical error rate far more effectively than smaller distances (d = 3, blue). All curves converge near a physical error rate of roughly 0.35–0.45, which marks the **pseudo-threshold** of this particular repetition code setup — above that point, larger codes stop helping and start doing slightly worse, matching the theoretical behavior described in QEC literature (including Google Quantum AI's below-threshold surface code results, *Nature*, 2024).
-
----
-
-## 📖 References
-
-- Gidney, C. *"Stim: a fast stabilizer circuit simulator."* Quantum 5, 497 (2021). https://doi.org/10.22331/q-2021-07-06-497
-- Higgott, O., Gidney, C. *"Sparse Blossom: correcting a million errors per core second with minimum-weight matching."* Quantum 9, 1600 (2025). https://doi.org/10.22331/q-2025-01-20-1600
-- Google Quantum AI and Collaborators. *"Quantum error correction below the surface code threshold."* Nature 638, 920–926 (2024). https://doi.org/10.1038/s41586-024-08449-y
-- [Stim GitHub Repository](https://github.com/quantumlib/Stim)
-- [PyMatching GitHub Repository](https://github.com/oscarhiggott/PyMatching)
-
----
-
-## 👤 Author
-
-Project by **[Your Name]** — built as a first hands-on project in quantum error correction, ahead of MS applications in quantum computing.
 
 
-
-
-
-
-
-# Repetition Code Quantum Error Correction Simulator
-
-A beginner-friendly simulation of a **Quantum Error Correction (QEC)** repetition code, built with [Stim](https://github.com/quantumlib/Stim) and decoded with [PyMatching](https://github.com/oscarhiggott/PyMatching), then benchmarked at scale with [Sinter](https://github.com/quantumlib/Stim/tree/main/glue/sample) to estimate the code's noise **threshold** under a simplified (phenomenological) noise model.
-
----
-
-## Table of Contents
-
-1. [Project Overview](#project-overview)
-2. [What Is Quantum Error Correction? (In Simple Words)](#what-is-quantum-error-correction-in-simple-words)
-3. [What Is a Repetition Code?](#what-is-a-repetition-code)
-4. [Tools and Libraries Used](#tools-and-libraries-used)
-5. [How the Project Works, Step by Step](#how-the-project-works-step-by-step)
-6. [Results](#results)
-7. [Limitations](#limitations)
-8. [Future Work](#future-work)
-9. [Project Structure](#project-structure)
-10. [How to Run This Project](#how-to-run-this-project)
-11. [What I Learned](#what-i-learned)
-12. [References](#references)
-
----
-
-## Project Overview
-
-Quantum computers make mistakes very often, because qubits (the basic unit of quantum information) are extremely sensitive to noise. **Quantum Error Correction (QEC)** is the set of techniques used to protect quantum information from these mistakes.
-
-This project simulates one of the simplest QEC codes, called the **repetition code**, and checks how well it protects information as noise increases. In simple words, this project answers the question:
-
-> "If I copy the same piece of quantum information across many qubits, how much noise can I tolerate before the information is lost?"
-
-The project:
-- Builds a repetition code circuit with a chosen "distance" (a measure of how many qubits are used for protection).
-- Adds random noise to the circuit using a **phenomenological noise model** — a simplified, idealized way of injecting noise that is easy to simulate and is commonly used as a first step before testing more detailed, gate-by-gate noise models.
-- Uses a decoder to guess and undo the noise.
-- Measures how often the decoder guesses wrong (this is called the **logical error rate**).
-- Repeats this process for different code sizes and noise levels to find the **threshold**: the noise level below which adding more qubits actually helps, and above which it doesn't.
-
----
-
-## What Is Quantum Error Correction? (In Simple Words)
+## What Is Quantum Error Correction?
 
 Imagine you are sending a single important word over a noisy phone line, and there's a chance a letter gets scrambled. One way to protect the word is to say it three times: "APPLE, APPLE, APPLE." If the noise only scrambles one copy, the listener can still figure out the correct word by looking at the majority.
 
 That is the basic idea behind quantum error correction. Instead of letters, we protect **qubits**. Instead of repeating words, we spread one qubit's information across several physical qubits. A **decoder** then looks at the results and figures out the most likely mistake, similar to how the listener figures out the correct word.
 
-Google Quantum AI describes quantum error correction as essential because "quantum computers stand at the forefront of technological innovation" but are only useful at scale if their errors can be detected and fixed faster than they occur.
+Google Quantum AI describes quantum error correction as essential because "quantum computers stand at the frontier of technological innovation" but are only useful at scale if their errors can be detected and fixed faster than they occur.
 
 ---
 
+
 ## What Is a Repetition Code?
 
-A repetition code protects **one logical qubit** by repeating it across several **physical qubits** (called data qubits), and uses extra helper qubits (called **ancilla qubits**) to check for errors without directly looking at (and disturbing) the protected information.
+A repetition code protects **one logical qubit** by repeating it across several **physical qubits** called data qubits and uses extra helper qubits called **ancilla qubits** to check for errors without disturbing and directly looking at the protected information:
+
+                                               N_total = N_data + N_ancilla = d + (d-1)
 
 In this project:
 - **Code distance (d):** controls how many qubits are used. A distance-9 code uses 9 data qubits and 8 ancilla qubits (17 qubits total).
@@ -206,10 +85,11 @@ The **larger the distance**, the more errors the code can survive, as long as th
 
 ---
 
-## Tools and Libraries Used
+
+## Tools & Libraries Used
 
 ### Stim
-[Stim](https://github.com/quantumlib/Stim) is an open-source, high-performance simulator for **stabilizer circuits** (the type of circuit used in most QEC codes), created by Craig Gidney at Google Quantum AI. According to its official paper, Stim can analyze a circuit with 20,000 qubits and 8 million gates in about 15 seconds, and then sample results at a rate of about 1,000 shots per second. It is one of the open-source tools Google Quantum AI builds and shares publicly to simulate quantum circuits and develop error correction techniques.
+Stim is an open-source, high-performance simulator for **stabilizer circuits** (the type of circuit used in most QEC codes), created by Craig Gidney at Google Quantum AI. According to its official paper, Stim can analyze a circuit with 20,000 qubits and 8 million gates in about 15 seconds, and then sample results at a rate of about 1,000 shots per second. It is one of the open-source tools Google Quantum AI builds and shares publicly to simulate quantum circuits and develop error correction techniques.
 
 In this project, Stim is used to:
 - Build the repetition code circuit.
@@ -218,21 +98,23 @@ In this project, Stim is used to:
 - Convert the noisy circuit into a **Detector Error Model**.
 
 ### Detector Error Model (DEM)
-A Detector Error Model is Stim's way of turning a full quantum circuit into a simplified list of "which errors cause which alarms to go off." Instead of tracking the whole circuit, the decoder only needs this simplified error map, which is much faster to work with. In this project, the DEM is saved and viewed as a graph, where each point represents a checkpoint (detector) and each connecting line represents a possible error.
+The **Detector Error Model** is Stim's compact, graph-like description of a noisy circuit: it lists every possible physical error and which detector(s) it would trigger if it occurred (`circuit.detector_error_model()`). Instead of reasoning about the full quantum circuit, a decoder only needs this much smaller error graph — each **node** is a detector, and each **edge** is a possible error connecting two detectors (or a detector to the boundary). This is what makes fast, practical decoding possible.
 
-### PyMatching
-[PyMatching](https://github.com/oscarhiggott/PyMatching) is an open-source Python decoder written by Oscar Higgott. It implements the **Minimum-Weight Perfect Matching (MWPM)** algorithm, which is a standard, widely used method for decoding QEC codes such as the repetition code and the surface code. PyMatching takes the Detector Error Model produced by Stim, builds a weighted graph from it, and works out the most likely pattern of errors that explains what the detectors reported.
+### PyMatching — Decoding
+PyMatching is a fast **Minimum-Weight Perfect Matching (MWPM)** decoder built by Oscar Higgott and Craig Gidney, developed with support from the Google Quantum AI team. Given a DEM and a set of detector events from a run, PyMatching finds the most likely underlying pattern of physical errors by matching pairs of fired detectors together. In this project, `pymatching.Matching.from_detector_error_model(...)` builds the decoder, and `matcher.decode_batch(...)` predicts whether the logical qubit flipped for each of the 100,000 simulated shots.
 
 ### Sinter
 Sinter is Stim's companion tool for running **large-scale QEC experiments**. While Stim runs one circuit at a time, Sinter automatically runs many circuits across different code distances and noise levels, collects the statistics, and helps generate the threshold plot. In this project, Sinter is used to test code distances 3, 5, 7, and 9 against several physical error rates, using PyMatching as the decoder.
 
 ### Supporting Libraries
-- **NumPy** — used for comparing the decoder's predictions against the actual results.
-- **Matplotlib** — used to plot the logical error rate against the physical error rate.
+- **NumPy** — numerical operations (e.g., comparing predicted vs. actual logical flips).
+- **Matplotlib** — plotting the logical vs. physical error rate curves.
 
 ---
 
-## How the Project Works, Step by Step
+
+
+## How the Project Works
 
 1. **Build the circuit.** A repetition code circuit is generated with code distance 9, run for 25 rounds, using a phenomenological noise model with a 4% chance of noise per qubit per round and a 1% chance of a measurement flip.
 2. **Look at raw measurements.** The circuit is sampled once to see the raw "yes/no" results from every qubit, every round.
@@ -246,6 +128,7 @@ Sinter is Stim's companion tool for running **large-scale QEC experiments**. Whi
 10. **Plot the final threshold graph.** The logical error rate is plotted against the physical error rate for every code distance, revealing the **threshold**: the noise level where increasing the code distance stops helping.
 
 ---
+
 
 ## Results
 
@@ -278,7 +161,9 @@ The full threshold plot, generated using Sinter, comparing code distances 3, 5, 
 - **Distance sweep (d = 3, 5, 7):** at low physical error rates, larger code distances gave a lower logical error rate. At high physical error rates, this advantage shrank or disappeared — this crossover is the signature of a noise **threshold**.
 - **Sinter threshold plot (d = 3, 5, 7, 9):** the curves for different distances cross close together around a specific physical error rate. Below that point, increasing the distance helps; above it, increasing the distance stops helping (and can even hurt). Report the approximate crossing point you observed once you have run the notebook and can read it off the plot.
 
+
 ---
+
 
 ## Limitations
 
@@ -296,6 +181,7 @@ Being transparent about these limitations is intentional — it shows a clear un
 
 ---
 
+
 ## Future Work
 
 - Re-run the same experiments using a **circuit-level noise model** instead of a phenomenological one, to see how much the threshold shifts.
@@ -306,10 +192,11 @@ Being transparent about these limitations is intentional — it shows a clear un
 
 ---
 
+
 ## Project Structure
 
 ```
-Project-R/
+
 ├── README.md
 ├── repetition_code.py          # Main script: circuit generation, decoding, and threshold estimation
 ├── Repetition Code.ipynb       # Original notebook version of the project
@@ -320,6 +207,7 @@ Project-R/
 ```
 
 ---
+
 
 ## How to Run This Project
 
@@ -349,20 +237,3 @@ Project-R/
 - How to read and interpret a QEC threshold plot.
 
 ---
-
-## References
-
-- Gidney, C. *Stim: a fast stabilizer circuit simulator.* Quantum, 5:497, 2021. https://quantum-journal.org/papers/q-2021-07-06-497/
-- Stim GitHub repository (Google Quantum AI): https://github.com/quantumlib/Stim
-- Higgott, O. *PyMatching: A Python package for decoding quantum codes with minimum-weight perfect matching.* https://github.com/oscarhiggott/PyMatching
-- Google Quantum AI open-source tools overview: https://developers.googleblog.com/unlocking-the-potential-of-quantum-computing-a-developers-guide-to-error-correction/
-- Google Quantum AI, *Hands-on Quantum Error Correction* course: https://www.coursera.org/learn/quantum-error-correction
-
----
-
-### Suggested Project Title (for CV / Resume)
-
-**"Repetition Code QEC Simulator: Threshold Estimation with Stim & PyMatching"**
-
-**One-line summary for CV:**
-> Simulated and decoded a distance-9 quantum repetition code under a phenomenological noise model using Stim and PyMatching (MWPM decoding), then estimated the code's noise threshold across multiple code distances using Monte Carlo sampling with Sinter.
